@@ -9,6 +9,7 @@ import codecs
 import csv
 from threading import Thread, RLock
 import socket
+import argparse
 socket.setdefaulttimeout(10.0)
 
 search_url = 'http://pub.xhsd.com.cn/books/searchfull.asp'
@@ -59,9 +60,12 @@ def get_book_info(href):
 
 
 def get_book_by_isbn(book_data, file_writer):
+    import ipdb;ipdb.set_trace()
+    print book_data, type(book_data)
     with requests.session() as s:
         plu_key = get_first_plu_key()
-        plu_title = book_data.get('isbn')
+        # plu_title = book_data.get('isbn')
+        plu_title = book_data[0]
         data = {
             'plu_title': plu_title,
             'plu_key': plu_key,
@@ -74,7 +78,7 @@ def get_book_by_isbn(book_data, file_writer):
             hrefs = soup.find_all('a')
             book_href = filter(lambda x: x['href'].startswith('views.asp?plucode'), hrefs)
             book_info = get_book_info(book_href[0]['href'])
-            book_data.update(book_info)
+            book_data.extend(book_info.values())
             file_writer.writerow(book_data)
 
 
@@ -85,24 +89,21 @@ def run(rfile):
     th_pool = []
     with open(rfile) as rf, open(wfile, 'a+') as wf:
         wf.write(codecs.BOM_UTF8)
-        reader = csv.DictReader(rf)
+        # reader = csv.DictReader(rf)
+        reader = csv.reader(rf)
         count = 0
-        writer = None
+        writer = csv.writer(wf)
         for line in reader:
-            if reader.line_num == 1:
-                title = line.keys().append(u'购书指南' u'近期销售情况')
-                writer = csv.DictWriter(wf, fieldnames=title)
-                writer.writeheader()
-                continue
-            count += 1
-            if count % 5 == 0:
-                for t in th_pool:
-                    t.join()
-                count = 0
-                time.sleep(1)
-            th = Thread(target=get_book_by_isbn, args=(line, writer))
-            th.start()
-            th_pool.append(th)
+            # count += 1
+            # if count % 5 == 0:
+            #     for t in th_pool:
+            #         t.join()
+            #     count = 0
+            #     time.sleep(1)
+            # th = Thread(target=get_book_by_isbn, args=(line, writer))
+            # th.start()
+            # th_pool.append(th)
+            get_book_by_isbn(line, writer)
 
 
 if __name__ == '__main__':
@@ -111,7 +112,7 @@ if __name__ == '__main__':
     parser.add_argument('--file', type=str, help='file name')
     args = parser.parse_args()
     src_file = args.file
-    if not src_file:
+    if src_file:
         run(src_file)
     else:
         print u'请输入文件名，例如: python bookinfo.py --file example.csv'
