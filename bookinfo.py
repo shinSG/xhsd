@@ -41,8 +41,8 @@ def get_book_info(href):
         tds = soup.find_all('td')
         in_store_td = filter(lambda x: x.get('onmouseover') == "style.background='#f6bf1c'", tds)
         for store in in_store_td:
-            store_name = store.contents[0]
-            store_quantity = store.find('b').string
+            store_name = store.contents[0].strip()
+            store_quantity = store.find('b').string.strip()
             in_store.append(store_name + ':' + store_quantity)
         sale_soup = soup.find(text=re.compile(u'查询零售信息'))
         sale_table = None
@@ -60,26 +60,38 @@ def get_book_info(href):
 
 
 def get_book_by_isbn(book_data, file_writer):
-    import ipdb;ipdb.set_trace()
-    print book_data, type(book_data)
     with requests.session() as s:
         plu_key = get_first_plu_key()
-        # plu_title = book_data.get('isbn')
-        plu_title = book_data[0]
-        data = {
-            'plu_title': plu_title,
-            'plu_key': plu_key,
-            'B1': u'图书搜索'
-        }
-        resp = s.post(search_url, data=data)
-        if resp.status_code == 200:
-            html_doc = resp.content
-            soup = BeautifulSoup(html_doc, 'html.parser')
-            hrefs = soup.find_all('a')
-            book_href = filter(lambda x: x['href'].startswith('views.asp?plucode'), hrefs)
-            book_info = get_book_info(book_href[0]['href'])
-            book_data.extend(book_info.values())
-            file_writer.writerow(book_data)
+        plu_title = book_data[1]
+        book_tilte = book_data[0].decode('utf8')
+        res = False
+        count = 0
+        while not res and count < 2:
+            data = {
+                'plu_title': plu_title,
+                'plu_key': plu_key,
+                'B1': u'图书搜索'
+            }
+            resp = s.post(search_url, data=data)
+            row_data = [book_tilte, book_data[1]]
+            print book_tilte
+            if resp.status_code == 200:
+                count += 1
+                html_doc = resp.content
+                soup = BeautifulSoup(html_doc, 'html.parser')
+                hrefs = soup.find_all('a')
+                book_href = filter(lambda x: x['href'].startswith('views.asp?plucode'), hrefs)
+                if len(book_href) == 0:
+                    plu_title = book_tilte
+                    continue
+                book_info = get_book_info(book_href[0]['href'])
+                row_data.extend(book_info.values())
+                try:
+                    file_writer.writerow([item.encode('utf8') for item in row_data])
+                    res = True
+                except:
+                    print row_data
+                    import traceback;traceback.print_exc()
 
 
 def run(rfile):
@@ -87,9 +99,8 @@ def run(rfile):
         return
     wfile = 'result-' + rfile
     th_pool = []
-    with open(rfile) as rf, open(wfile, 'a+') as wf:
-        wf.write(codecs.BOM_UTF8)
-        # reader = csv.DictReader(rf)
+    with open(rfile) as rf, open(wfile, 'w') as wf:
+        # wf.write(codecs.BOM_UTF8)
         reader = csv.reader(rf)
         count = 0
         writer = csv.writer(wf)
