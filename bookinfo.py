@@ -2,14 +2,14 @@
 # coding: utf-8
 
 import re
+import string
 import requests
-from bs4 import BeautifulSoup
-import time
 import codecs
 import csv
-from threading import Thread, RLock
 import socket
 import argparse
+from bs4 import BeautifulSoup
+
 socket.setdefaulttimeout(10.0)
 
 search_url = 'http://pub.xhsd.com.cn/books/searchfull.asp'
@@ -42,6 +42,8 @@ def get_book_info(href):
         in_store_td = filter(lambda x: x.get('onmouseover') == "style.background='#f6bf1c'", tds)
         for store in in_store_td:
             store_name = store.contents[0].strip()
+            if not store_name:
+                store_name = store.find(text=re.compile(ur'^.*[店厦].*$'))
             store_quantity = store.find('b').string.strip()
             in_store.append(store_name + ':' + store_quantity)
         sale_soup = soup.find(text=re.compile(u'查询零售信息'))
@@ -62,8 +64,10 @@ def get_book_info(href):
 def get_book_by_isbn(book_data, file_writer):
     with requests.session() as s:
         plu_key = get_first_plu_key()
-        plu_title = book_data[1]
+        chn_punctuation = u'_·！？｡＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏.'
         book_tilte = book_data[0].decode('utf8')
+        plu_title = re.sub(ur'[%s%s]+' % (chn_punctuation, string.punctuation), ' ', book_data[0].decode('utf8'))
+        print book_tilte
         res = False
         count = 0
         while not res and count < 2:
@@ -74,17 +78,24 @@ def get_book_by_isbn(book_data, file_writer):
             }
             resp = s.post(search_url, data=data)
             row_data = [book_tilte, book_data[1]]
-            print book_tilte
             if resp.status_code == 200:
                 count += 1
                 html_doc = resp.content
                 soup = BeautifulSoup(html_doc, 'html.parser')
                 hrefs = soup.find_all('a')
-                book_href = filter(lambda x: x['href'].startswith('views.asp?plucode'), hrefs)
-                if len(book_href) == 0:
+                book_hrefs = filter(lambda x: x['href'].startswith('views.asp?plucode'), hrefs)
+                if len(book_hrefs) == 0:
                     plu_title = book_tilte
                     continue
-                book_info = get_book_info(book_href[0]['href'])
+                bhref = ''
+                if len(book_hrefs) > 1:
+                    for item in book_hrefs:
+                        if item.text.strip() == book_tilte:
+                            bhref = item.get('href')
+                if not bhref:
+                    continue
+                book_info = get_book_info(bhref)
+                # book_info = get_book_info(book_hrefs[0].get('href'))
                 row_data.extend(book_info.values())
                 try:
                     file_writer.writerow([item.encode('utf8') for item in row_data])
@@ -98,22 +109,11 @@ def run(rfile):
     if not rfile:
         return
     wfile = 'result-' + rfile
-    th_pool = []
     with open(rfile) as rf, open(wfile, 'w') as wf:
-        # wf.write(codecs.BOM_UTF8)
+        wf.write(codecs.BOM_UTF8)
         reader = csv.reader(rf)
-        count = 0
         writer = csv.writer(wf)
         for line in reader:
-            # count += 1
-            # if count % 5 == 0:
-            #     for t in th_pool:
-            #         t.join()
-            #     count = 0
-            #     time.sleep(1)
-            # th = Thread(target=get_book_by_isbn, args=(line, writer))
-            # th.start()
-            # th_pool.append(th)
             get_book_by_isbn(line, writer)
 
 
