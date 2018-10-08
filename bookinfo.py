@@ -32,6 +32,8 @@ def get_first_plu_key():
 
 
 def get_book_info(href):
+    if not href:
+        return {'store': '', 'sale': ''}
     resp = requests.get(base_book_url + href)
     in_store = []
     sale_info = ''
@@ -43,7 +45,7 @@ def get_book_info(href):
         for store in in_store_td:
             store_name = store.contents[0].strip()
             if not store_name:
-                store_name = store.find(text=re.compile(ur'^.*[店厦].*$'))
+                store_name = store.find(text=re.compile(ur'^.*[店厦城].*$'))
             store_quantity = store.find('b').string.strip()
             in_store.append(store_name + ':' + store_quantity)
         sale_soup = soup.find(text=re.compile(u'查询零售信息'))
@@ -65,9 +67,10 @@ def get_book_by_isbn(book_data, file_writer):
     with requests.session() as s:
         plu_key = get_first_plu_key()
         chn_punctuation = u'_·！？｡＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏.'
-        book_tilte = book_data[0].decode('utf8')
+        book_tilte = book_data[0].strip().decode('utf8')
         plu_title = re.sub(ur'[%s%s]+' % (chn_punctuation, string.punctuation), ' ', book_data[0].decode('utf8'))
         print book_tilte
+        isbn = book_data[1].strip().decode('utf8')
         res = False
         count = 0
         while not res and count < 2:
@@ -77,7 +80,7 @@ def get_book_by_isbn(book_data, file_writer):
                 'B1': u'图书搜索'
             }
             resp = s.post(search_url, data=data)
-            row_data = [book_tilte, book_data[1]]
+            row_data = [book_tilte, isbn]
             if resp.status_code == 200:
                 count += 1
                 html_doc = resp.content
@@ -85,17 +88,17 @@ def get_book_by_isbn(book_data, file_writer):
                 hrefs = soup.find_all('a')
                 book_hrefs = filter(lambda x: x['href'].startswith('views.asp?plucode'), hrefs)
                 if len(book_hrefs) == 0:
-                    plu_title = book_tilte
-                    continue
+                    plu_title = isbn
+                    if count != 2:
+                        continue
                 bhref = ''
                 if len(book_hrefs) > 1:
                     for item in book_hrefs:
                         if item.text.strip() == book_tilte:
                             bhref = item.get('href')
-                if not bhref:
-                    continue
+                if len(book_hrefs) == 1:
+                    bhref = book_hrefs[0].get('href')
                 book_info = get_book_info(bhref)
-                # book_info = get_book_info(book_hrefs[0].get('href'))
                 row_data.extend(book_info.values())
                 try:
                     file_writer.writerow([item.encode('utf8') for item in row_data])
