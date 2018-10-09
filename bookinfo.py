@@ -66,13 +66,28 @@ def get_book_info(href):
 def get_book_by_isbn(book_data, file_writer):
     with requests.session() as s:
         plu_key = get_first_plu_key()
-        chn_punctuation = u'_·！？｡＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏.'
-        book_tilte = book_data[0].strip().decode('utf8')
-        plu_title = re.sub(ur'[%s%s]+' % (chn_punctuation, string.punctuation), ' ', book_data[0].decode('utf8'))
-        print book_tilte
-        isbn = book_data[1].strip().decode('utf8')
+        plu_title = ''
+        book_tilte = ''
+        isbn = ''
+        if len(book_data) == 1:
+            if re.search(r'[0-9\-]', book_data[0]):
+                isbn = book_data[0].strip().decode('utf8')
+            else:
+                book_tilte = book_data[0].strip().decode('utf8')
+            plu_title = book_data[0].strip().decode('utf8')
+        elif len(book_data) > 1:
+            chn_punctuation = u'_·！？｡＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏.'
+            book_tilte = book_data[0].strip().decode('utf8')
+            plu_title = re.sub(ur'[%s%s]+' % (chn_punctuation, string.punctuation), ' ', book_data[0].decode('utf8'))
+            print book_tilte
+            isbn = book_data[1].strip().decode('utf8')
         res = False
         count = 0
+        row_data = [book_tilte, isbn]
+        book_info = {
+            'store': '',
+            'sale': ''
+        }
         while not res and count < 2:
             data = {
                 'plu_title': plu_title,
@@ -80,7 +95,6 @@ def get_book_by_isbn(book_data, file_writer):
                 'B1': u'图书搜索'
             }
             resp = s.post(search_url, data=data)
-            row_data = [book_tilte, isbn]
             if resp.status_code == 200:
                 count += 1
                 html_doc = resp.content
@@ -88,6 +102,8 @@ def get_book_by_isbn(book_data, file_writer):
                 hrefs = soup.find_all('a')
                 book_hrefs = filter(lambda x: x['href'].startswith('views.asp?plucode'), hrefs)
                 if len(book_hrefs) == 0:
+                    if len(book_data) == 1:
+                        break
                     plu_title = isbn
                     if count != 2:
                         continue
@@ -98,14 +114,17 @@ def get_book_by_isbn(book_data, file_writer):
                             bhref = item.get('href')
                 if len(book_hrefs) == 1:
                     bhref = book_hrefs[0].get('href')
+                    if not book_tilte:
+                        print book_hrefs[0].text
+                        row_data[0] = book_hrefs[0].text
                 book_info = get_book_info(bhref)
-                row_data.extend(book_info.values())
-                try:
-                    file_writer.writerow([item.encode('utf8') for item in row_data])
-                    res = True
-                except:
-                    print row_data
-                    import traceback;traceback.print_exc()
+                res = True
+        try:
+            row_data.extend(book_info.values())
+            file_writer.writerow([item.encode('utf8') for item in row_data])
+        except:
+            print row_data
+            import traceback;traceback.print_exc()
 
 
 def run(rfile):
@@ -121,7 +140,6 @@ def run(rfile):
 
 
 if __name__ == '__main__':
-    # get_book_by_isbn('978-7-5596-0240-4')
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', type=str, help='file name')
     args = parser.parse_args()
