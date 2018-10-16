@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import datetime
 import re
 import string
 import requests
@@ -9,6 +10,7 @@ import csv
 import socket
 import argparse
 from bs4 import BeautifulSoup
+import xlrd
 
 socket.setdefaulttimeout(10.0)
 
@@ -120,23 +122,74 @@ def get_book_by_isbn(book_data, file_writer):
                 book_info = get_book_info(bhref)
                 res = True
         try:
+            dict_data = {
+                u'书名': row_data[0],
+                u'ISBN': row_data[1],
+                u'库存信息': book_info.get('store'),
+            }
+            sale_info = book_info.get('sale').split(')')
+            for si in sale_info:
+                kv = si.split(':')
+                if len(kv) > 1:
+                    dict_data.update(
+                        {
+                            kv[0].strip(): re.sub(r'[()（）]+', '', kv[1])
+                        }
+                    )
             row_data.extend(book_info.values())
-            file_writer.writerow([item.encode('utf8') for item in row_data])
+            file_writer.writerow({k.encode('utf8'): v.encode('utf8') for k, v in dict_data.iteritems()})
         except:
             print row_data
             import traceback;traceback.print_exc()
 
 
+def get_csv_writer(wf):
+    wf.write(codecs.BOM_UTF8)
+    current_year = datetime.datetime.now().year
+    current_month = datetime.datetime.now().month
+    title = [u'书名', u'ISBN', u'库存信息', ]
+    month = int(current_month) + 1
+    for i in xrange(0, 12):
+        month -= 1
+        if month < 1:
+            month = 12
+            current_year = current_year - 1
+        title.append(unicode(str(current_year) + '-' + (str(month) if month > 9 else '0' + str(month))))
+    title = [item.encode('utf-8') for item in title]
+    writer = csv.DictWriter(wf, title, restval='')
+    writer.writeheader()
+    return writer
+
+
+def process_csv(rfile, wfile):
+    with open(rfile) as rf, open(wfile, 'w') as wf:
+        reader = csv.reader(rf)
+        writer = get_csv_writer(wf)
+        for line in reader:
+            get_book_by_isbn(line, writer)
+
+
+def process_excel(rfile, wfile):
+    book = xlrd.open_workbook(rfile)
+    sh = book.sheet_by_index(0)
+    with open(wfile, 'w') as wf:
+        writer = get_csv_writer(wf)
+        for rx in range(sh.nrows):
+            get_book_by_isbn(sh.row_values(rx), writer)
+
+
 def run(rfile):
     if not rfile:
         return
-    wfile = 'result-' + rfile
-    with open(rfile) as rf, open(wfile, 'w') as wf:
-        wf.write(codecs.BOM_UTF8)
-        reader = csv.reader(rf)
-        writer = csv.writer(wf)
-        for line in reader:
-            get_book_by_isbn(line, writer)
+    wfile = 'result-' + rfile.split('.')[0] + '-' + datetime.date.today().strftime('%Y-%m-%d') + '.csv'
+    if rfile.endswith('.csv'):
+        process_csv(rfile, wfile)
+    elif rfile.endswith('.xls') or rfile.endswith('.xlsx'):
+        process_excel(rfile, wfile)
+    else:
+        print u'文件类型错误，仅支持.csv .xls .xlsx文件'
+
+
 
 
 if __name__ == '__main__':

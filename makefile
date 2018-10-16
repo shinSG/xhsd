@@ -1,5 +1,5 @@
-init
-	pip install -r requirements
+init:
+	pip install -r requirements.txt
 
-run
-	python bookinfo.py --file
+run: init
+	python bookinfo.py --file $(FILE)
